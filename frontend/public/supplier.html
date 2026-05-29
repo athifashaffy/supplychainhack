@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supplier — TAN Supply Chain</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="components.js"></script>
+</head>
+<body>
+
+<header>
+  <a href="index.html" class="logo">
+    <div class="logo-mark"><img src="tan-logo.jpeg" alt="TAN"></div>
+    <div>
+      <div class="logo-text">Supply Chain Provenance</div>
+      <div class="logo-sub">Verified Canadian Content</div>
+    </div>
+  </a>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="supplier.html" class="active">Supplier</a>
+    <a href="purchaser.html">Purchaser</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="page-title">Supplier Portal</div>
+  <div class="page-sub">Submit a cryptographically signed attestation for your supply chain contribution</div>
+
+  <!-- Register Supplier -->
+  <div class="card">
+    <div class="card-title">Register Supplier (generate Ed25519 keypair)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Supplier ID</label>
+        <input id="reg-id" placeholder="e.g. sup-acme-001" />
+      </div>
+      <div class="form-group">
+        <label>Company Name</label>
+        <input id="reg-name" placeholder="ACME Composites Ltd." />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Country</label>
+        <select id="reg-country">
+          <option value="CA">Canada (CA)</option>
+          <option value="US">United States (US)</option>
+          <option value="GB">United Kingdom (GB)</option>
+          <option value="DE">Germany (DE)</option>
+          <option value="CN">China (CN)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Province (if Canada)</label>
+        <select id="reg-province">
+          <option value="">— Select —</option>
+          <option>AB</option><option>BC</option><option>MB</option>
+          <option>NB</option><option>NL</option><option>NS</option>
+          <option>NT</option><option>NU</option><option>ON</option>
+          <option>PE</option><option>QC</option><option>SK</option><option>YT</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="generateKey()">Generate Keypair & Register</button>
+    <div id="reg-result" style="margin-top:1rem;"></div>
+    <div id="keypair-display" style="display:none;margin-top:1rem;">
+      <div class="alert alert-warning" style="margin-bottom:.5rem;">
+        Save your private key now — it cannot be recovered!
+      </div>
+      <div class="form-group">
+        <label>Private Key (hex) — keep secret</label>
+        <input id="priv-key-display" readonly onclick="this.select()" style="font-family:monospace;font-size:.75rem;background:#fef9c3;" />
+      </div>
+      <div class="form-group">
+        <label>Public Key (hex) — stored in registry</label>
+        <input id="pub-key-display" readonly onclick="this.select()" style="font-family:monospace;font-size:.75rem;" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Sign & Submit Attestation -->
+  <div class="card">
+    <div class="card-title">Sign & Submit Attestation</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Supplier ID</label>
+        <input id="att-supplier-id" placeholder="sup-acme-001" />
+      </div>
+      <div class="form-group">
+        <label>Private Key (hex) — signs attestation</label>
+        <input id="att-private-key" placeholder="64-char hex" type="password" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Product / Component Name</label>
+      <input id="att-product-name" placeholder="Carbon Fibre Drone Frame" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Location Country</label>
+        <select id="att-country">
+          <option value="CA">Canada (CA)</option>
+          <option value="US">United States (US)</option>
+          <option value="GB">United Kingdom (GB)</option>
+          <option value="DE">Germany (DE)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Province</label>
+        <select id="att-province">
+          <option value="">— Select —</option>
+          <option>AB</option><option>BC</option><option>MB</option>
+          <option>NB</option><option>NL</option><option>NS</option>
+          <option>NT</option><option>NU</option><option>ON</option>
+          <option>PE</option><option>QC</option><option>SK</option><option>YT</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Upstream Attestation IDs (inputs consumed)</label>
+      <div class="input-list" id="inputs-list">
+        <div class="input-item">
+          <input placeholder="Upstream attestation SHA-256 ID (leave blank if raw material)" />
+          <button class="remove-btn" onclick="removeInput(this)">×</button>
+        </div>
+      </div>
+      <button class="btn btn-outline" style="margin-top:.5rem;padding:.35rem .8rem;font-size:.8rem;" onclick="addInput()">+ Add Input</button>
+    </div>
+
+    <div class="form-group">
+      <label>Materials</label>
+      <div id="materials-list">
+        <div class="material-row">
+          <input placeholder="Material name" class="mat-name" />
+          <input placeholder="Cost (CAD)" type="number" class="mat-cost" min="0" />
+          <select class="mat-country">
+            <option value="CA">CA</option>
+            <option value="US">US</option>
+            <option value="CN">CN</option>
+            <option value="DE">DE</option>
+            <option value="GB">GB</option>
+          </select>
+          <button class="remove-btn" onclick="removeMaterial(this)">×</button>
+        </div>
+      </div>
+      <button class="btn btn-outline" style="margin-top:.5rem;padding:.35rem .8rem;font-size:.8rem;" onclick="addMaterial()">+ Add Material</button>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Labour Cost (CAD)</label>
+        <input id="att-labour-cost" type="number" min="0" placeholder="0.00" />
+      </div>
+      <div class="form-group">
+        <label>Labour Country</label>
+        <select id="att-labour-country">
+          <option value="CA">Canada (CA)</option>
+          <option value="US">United States (US)</option>
+          <option value="DE">Germany (DE)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Quantity Produced</label>
+        <input id="att-qty" type="number" min="0" placeholder="1" />
+      </div>
+      <div class="form-group">
+        <label>Unit</label>
+        <input id="att-unit" placeholder="unit, kg, m, etc." />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Transformation Description</label>
+      <textarea id="att-transformation" placeholder="Describe the manufacturing step performed..."></textarea>
+    </div>
+
+    <button class="btn btn-primary" onclick="submitAttestation()">Sign & Submit Attestation</button>
+    <div id="att-result" style="margin-top:1rem;"></div>
+  </div>
+</div>
+
+<script>
+const API = window.API_BASE_URL || 'http://localhost:8000';
+
+async function apiFetch(path, opts = {}) {
+  const r = await fetch(API + path, opts);
+  const text = await r.text();
+  if (!r.ok) throw new Error(text);
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+// ── Ed25519 in browser via SubtleCrypto ──────────────────────────────────────
+// Note: SubtleCrypto supports Ed25519 in modern browsers (Chromium 128+, Firefox 130+)
+// Fallback: we call the backend's /api/seed for demo; for the hackathon,
+// the event provides a reference library. Here we implement client-side signing.
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2)
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  return bytes;
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function canonicalJSON(obj) {
+  return JSON.stringify(obj, Object.keys(obj).sort(), 0)
+    .replace(/\s/g, '');
+}
+
+// Recursive canonical JSON (sorted keys at every level)
+function toCanonical(val) {
+  if (val === null || typeof val !== 'object' || Array.isArray(val)) {
+    return JSON.stringify(val);
+  }
+  const keys = Object.keys(val).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + toCanonical(val[k])).join(',') + '}';
+}
+
+async function generateKey() {
+  const id = document.getElementById('reg-id').value.trim();
+  const name = document.getElementById('reg-name').value.trim();
+  const country = document.getElementById('reg-country').value;
+  const province = document.getElementById('reg-province').value || null;
+
+  if (!id || !name) {
+    document.getElementById('reg-result').innerHTML = Components.alert('Supplier ID and name are required.', 'danger');
+    return;
+  }
+
+  let pubHex, privHex;
+
+  try {
+    // Generate Ed25519 keypair via SubtleCrypto
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+
+    const privRaw = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+    const pubRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+
+    // PKCS8 for Ed25519 has a fixed 16-byte header; the raw key is the last 32 bytes
+    const privBytes = new Uint8Array(privRaw);
+    // Extract raw 32-byte private key from PKCS8 (offset may vary; last 32 bytes)
+    const rawPriv = privBytes.slice(privBytes.length - 32);
+    privHex = bytesToHex(rawPriv);
+    pubHex = bytesToHex(new Uint8Array(pubRaw));
+  } catch (e) {
+    // SubtleCrypto Ed25519 not supported — show error
+    document.getElementById('reg-result').innerHTML = Components.alert(
+      `Browser does not support Ed25519 (need Chrome 128+ / Firefox 130+). Use the seed endpoint for demo keys.<br><small>${e.message}</small>`,
+      'danger'
+    );
+    return;
+  }
+
+  // Register with backend
+  try {
+    await apiFetch('/api/suppliers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ supplier_id: id, name, country, province, public_key_hex: pubHex }),
+    });
+
+    document.getElementById('reg-result').innerHTML =
+      Components.alert(`Supplier <strong>${id}</strong> registered.`, 'success');
+    document.getElementById('keypair-display').style.display = 'block';
+    document.getElementById('priv-key-display').value = privHex;
+    document.getElementById('pub-key-display').value = pubHex;
+    document.getElementById('att-supplier-id').value = id;
+    document.getElementById('att-private-key').value = privHex;
+  } catch (e) {
+    document.getElementById('reg-result').innerHTML = Components.alert(e.message, 'danger');
+  }
+}
+
+async function signPayload(payloadObj, privHex) {
+  const message = new TextEncoder().encode(toCanonical(payloadObj));
+  // Reconstruct CryptoKey from raw bytes via PKCS8 wrapper
+  // Ed25519 PKCS8: 0x302e020100300506032b657004220420 + 32 raw bytes
+  const prefix = new Uint8Array([
+    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+    0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20
+  ]);
+  const rawPriv = hexToBytes(privHex);
+  const pkcs8 = new Uint8Array(prefix.length + rawPriv.length);
+  pkcs8.set(prefix);
+  pkcs8.set(rawPriv, prefix.length);
+
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8', pkcs8.buffer,
+    { name: 'Ed25519' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign({ name: 'Ed25519' }, privateKey, message);
+  return bytesToHex(new Uint8Array(sig));
+}
+
+function addInput() {
+  const list = document.getElementById('inputs-list');
+  const div = document.createElement('div');
+  div.className = 'input-item';
+  div.innerHTML = `
+    <input placeholder="Upstream attestation SHA-256 ID" />
+    <button class="remove-btn" onclick="removeInput(this)">×</button>`;
+  list.appendChild(div);
+}
+
+function removeInput(btn) {
+  const list = document.getElementById('inputs-list');
+  if (list.children.length > 1) btn.closest('.input-item').remove();
+}
+
+function addMaterial() {
+  const list = document.getElementById('materials-list');
+  const div = document.createElement('div');
+  div.className = 'material-row';
+  div.innerHTML = `
+    <input placeholder="Material name" class="mat-name" />
+    <input placeholder="Cost (CAD)" type="number" class="mat-cost" min="0" />
+    <select class="mat-country">
+      <option value="CA">CA</option><option value="US">US</option>
+      <option value="CN">CN</option><option value="DE">DE</option>
+    </select>
+    <button class="remove-btn" onclick="removeMaterial(this)">×</button>`;
+  list.appendChild(div);
+}
+
+function removeMaterial(btn) {
+  btn.closest('.material-row').remove();
+}
+
+async function submitAttestation() {
+  const result = document.getElementById('att-result');
+  result.innerHTML = Components.spinner('Signing and submitting...');
+
+  const supplierId = document.getElementById('att-supplier-id').value.trim();
+  const privKeyHex = document.getElementById('att-private-key').value.trim();
+  const productName = document.getElementById('att-product-name').value.trim();
+  const country = document.getElementById('att-country').value;
+  const province = document.getElementById('att-province').value || null;
+  const labourCost = parseFloat(document.getElementById('att-labour-cost').value) || 0;
+  const labourCountry = document.getElementById('att-labour-country').value;
+  const qty = parseFloat(document.getElementById('att-qty').value) || null;
+  const unit = document.getElementById('att-unit').value.trim() || null;
+  const transformation = document.getElementById('att-transformation').value.trim() || null;
+
+  if (!supplierId || !privKeyHex || !productName) {
+    result.innerHTML = Components.alert('Supplier ID, private key, and product name are required.', 'danger');
+    return;
+  }
+
+  // Collect inputs
+  const inputs = Array.from(document.querySelectorAll('#inputs-list input'))
+    .map(el => el.value.trim()).filter(Boolean);
+
+  // Collect materials
+  const materials = [];
+  document.querySelectorAll('#materials-list .material-row').forEach(row => {
+    const name = row.querySelector('.mat-name').value.trim();
+    const cost = parseFloat(row.querySelector('.mat-cost').value) || 0;
+    const matCountry = row.querySelector('.mat-country').value;
+    if (name) materials.push({ name, cost_cad: cost, country: matCountry });
+  });
+
+  const payload = {
+    supplier_id: supplierId,
+    product_name: productName,
+    timestamp: new Date().toISOString(),
+    location: { country, province },
+    inputs,
+    materials,
+    labour: labourCost > 0 ? { cost_cad: labourCost, country: labourCountry } : null,
+    transformation_description: transformation,
+    quantity_produced: qty,
+    unit,
+  };
+
+  try {
+    const signature = await signPayload(payload, privKeyHex);
+    const body = { payload, signature, signer_id: supplierId };
+
+    const res = await apiFetch('/api/attest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const sigBadge = Components.badge(res.signature_valid ? 'Valid' : 'Invalid', res.signature_valid ? 'success' : 'danger');
+    result.innerHTML = Components.alert(
+      `<strong>Attestation submitted!</strong><br>
+       ID: <span class="mono">${res.attestation_id}</span><br>
+       Signature: ${sigBadge}<br>
+       <a href="purchaser.html?id=${res.attestation_id}" style="color:var(--tan-success);font-weight:600;">
+         View provenance report →
+       </a>`,
+      'success'
+    );
+  } catch (e) {
+    result.innerHTML = Components.alert(e.message, 'danger');
+  }
+}
+</script>
+
+</body>
+</html>

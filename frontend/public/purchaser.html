@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Purchaser — TAN Supply Chain</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="components.js"></script>
+  <!-- ZXing for QR code scanning -->
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+</head>
+<body>
+
+<header>
+  <a href="index.html" class="logo">
+    <div class="logo-mark"><img src="tan-logo.jpeg" alt="TAN"></div>
+    <div>
+      <div class="logo-text">Supply Chain Provenance</div>
+      <div class="logo-sub">Verified Canadian Content</div>
+    </div>
+  </a>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="supplier.html">Supplier</a>
+    <a href="purchaser.html" class="active">Purchaser</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="page-title">Verify Product Provenance</div>
+  <div class="page-sub">Scan a QR code or enter an attestation ID to verify Canadian content</div>
+
+  <!-- Search -->
+  <div class="card">
+    <div class="card-title">Look Up Product</div>
+    <div style="display:flex;gap:.75rem;align-items:flex-end;">
+      <div class="form-group" style="flex:1;margin:0;">
+        <label>Attestation ID</label>
+        <input id="lookup-id" placeholder="Enter SHA-256 attestation ID..." />
+      </div>
+      <button class="btn btn-primary" onclick="lookup()">Verify</button>
+      <button class="btn btn-outline" onclick="toggleScanner()">Scan QR</button>
+    </div>
+
+    <!-- QR Scanner -->
+    <div id="scanner-wrap" style="display:none;margin-top:1rem;">
+      <div style="position:relative;max-width:400px;margin:0 auto;">
+        <video id="qr-video" style="width:100%;border-radius:var(--radius);border:2px solid var(--tan-blue);" playsinline></video>
+        <div style="position:absolute;top:.5rem;right:.5rem;">
+          <button class="btn btn-outline" onclick="stopScanner()" style="background:rgba(255,255,255,.9);padding:.3rem .7rem;font-size:.8rem;">Stop</button>
+        </div>
+      </div>
+      <div id="scanner-status" style="text-align:center;margin-top:.5rem;color:var(--tan-gray);font-size:.85rem;">
+        Point camera at QR code...
+      </div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div id="report-wrap"></div>
+</div>
+
+<script>
+const API = window.API_BASE_URL || 'http://localhost:8000';
+let codeReader = null;
+let scanning = false;
+
+async function apiFetch(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// Auto-load from URL param
+const params = new URLSearchParams(window.location.search);
+if (params.get('id')) {
+  document.getElementById('lookup-id').value = params.get('id');
+  setTimeout(lookup, 100);
+}
+
+async function lookup() {
+  const id = document.getElementById('lookup-id').value.trim();
+  if (!id) return;
+
+  const wrap = document.getElementById('report-wrap');
+  wrap.innerHTML = `<div class="card">${Components.spinner('Loading provenance report...')}</div>`;
+
+  try {
+    const data = await apiFetch(`/api/product/${id}`);
+    renderReport(data, wrap);
+  } catch (e) {
+    wrap.innerHTML = `<div class="card">${Components.alert(e.message, 'danger')}</div>`;
+  }
+}
+
+function renderReport(data, wrap) {
+  wrap.innerHTML = Components.provenanceReport(data, API);
+}
+
+// ── QR Scanner ──────────────────────────────────────────────────────────────
+
+function toggleScanner() {
+  if (scanning) { stopScanner(); return; }
+  document.getElementById('scanner-wrap').style.display = 'block';
+  scanning = true;
+
+  if (!window.ZXing) {
+    document.getElementById('scanner-status').textContent = 'ZXing library not loaded.';
+    return;
+  }
+
+  codeReader = new ZXing.BrowserQRCodeReader();
+  const video = document.getElementById('qr-video');
+
+  codeReader.decodeFromVideoDevice(null, video, (result, err) => {
+    if (result) {
+      const text = result.getText();
+      // Extract attestation ID from URL or use directly
+      let id = text;
+      try {
+        const u = new URL(text);
+        id = u.searchParams.get('id') || text;
+      } catch (_) {}
+      document.getElementById('lookup-id').value = id;
+      stopScanner();
+      lookup();
+    }
+  });
+}
+
+function stopScanner() {
+  if (codeReader) { codeReader.reset(); codeReader = null; }
+  document.getElementById('scanner-wrap').style.display = 'none';
+  scanning = false;
+}
+</script>
+
+</body>
+</html>

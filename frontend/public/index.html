@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TAN Supply Chain Provenance</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="components.js"></script>
+</head>
+<body>
+
+<header>
+  <a href="index.html" class="logo">
+    <div class="logo-mark"><img src="tan-logo.jpeg" alt="TAN"></div>
+    <div>
+      <div class="logo-text">Supply Chain Provenance</div>
+      <div class="logo-sub">Verified Canadian Content</div>
+    </div>
+  </a>
+  <nav>
+    <a href="index.html" class="active">Dashboard</a>
+    <a href="supplier.html">Supplier</a>
+    <a href="purchaser.html">Purchaser</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="page-title">Dashboard</div>
+  <div class="page-sub">Cryptographic supply chain attestations — Canadian drone sector</div>
+
+  <div class="stat-grid" id="stats">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-suppliers">—</div>
+      <div class="stat-label">Registered Suppliers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-attestations">—</div>
+      <div class="stat-label">Attestations</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-valid">—</div>
+      <div class="stat-label">Valid Signatures</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-invalid">—</div>
+      <div class="stat-label">Flagged Issues</div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="card">
+    <div class="card-title">Quick Actions</div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="seedData()">
+        Seed Demo Data
+      </button>
+      <button class="btn btn-outline" onclick="location.href='supplier.html'">
+        Submit Attestation
+      </button>
+      <button class="btn btn-outline" onclick="location.href='purchaser.html'">
+        Verify Product
+      </button>
+    </div>
+    <div id="seed-result" style="margin-top:1rem;"></div>
+  </div>
+
+  <!-- Recent Attestations -->
+  <div class="card">
+    <div class="card-title">Recent Attestations</div>
+    <div id="att-table-wrap" class="table-scroll">
+      <div class="spinner"></div> Loading...
+    </div>
+  </div>
+
+  <!-- Suppliers -->
+  <div class="card">
+    <div class="card-title">Registered Suppliers</div>
+    <div id="sup-table-wrap" class="table-scroll">
+      <div class="spinner"></div> Loading...
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.API_BASE_URL || 'http://localhost:8000';
+
+async function apiFetch(path, opts = {}) {
+  const r = await fetch(API + path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadData() {
+  const [suppliers, attestations] = await Promise.all([
+    apiFetch('/api/suppliers').catch(() => []),
+    apiFetch('/api/attestations').catch(() => []),
+  ]);
+
+  const valid = attestations.filter(a => a.sig_valid).length;
+  const invalid = attestations.filter(a => !a.sig_valid).length;
+
+  document.getElementById('stat-suppliers').textContent = suppliers.length;
+  document.getElementById('stat-attestations').textContent = attestations.length;
+  document.getElementById('stat-valid').textContent = valid;
+  document.getElementById('stat-invalid').textContent = invalid;
+
+  // Attestation table
+  if (attestations.length === 0) {
+    document.getElementById('att-table-wrap').innerHTML =
+      '<p style="color:var(--tan-gray);font-size:.9rem;">No attestations yet. Click "Seed Demo Data" to load examples.</p>';
+  } else {
+    document.getElementById('att-table-wrap').innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Product</th>
+          <th>Supplier</th>
+          <th>ID</th>
+          <th>Sig</th>
+          <th>Actions</th>
+        </tr></thead>
+        <tbody>
+          ${attestations.slice(0, 20).map(a => `
+            <tr>
+              <td>${a.product_name || '—'}</td>
+              <td><span class="mono">${a.signer_id}</span></td>
+              <td><span class="mono">${Components._shortId(a.id)}</span></td>
+              <td>${Components.badge(a.sig_valid ? 'Valid' : 'Invalid', a.sig_valid ? 'success' : 'danger')}</td>
+              <td>
+                <a href="purchaser.html?id=${a.id}" class="btn btn-outline" style="padding:.3rem .7rem;font-size:.75rem;">View</a>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  // Supplier table
+  if (suppliers.length === 0) {
+    document.getElementById('sup-table-wrap').innerHTML =
+      '<p style="color:var(--tan-gray);font-size:.9rem;">No suppliers registered.</p>';
+  } else {
+    document.getElementById('sup-table-wrap').innerHTML = `
+      <table>
+        <thead><tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Location</th>
+          <th>Registered</th>
+        </tr></thead>
+        <tbody>
+          ${suppliers.map(s => Components.supplierRow(s)).join('')}
+        </tbody>
+      </table>`;
+  }
+}
+
+async function seedData() {
+  const el = document.getElementById('seed-result');
+  el.innerHTML = Components.spinner('Seeding demo data...');
+  try {
+    const result = await apiFetch('/api/seed', { method: 'POST' });
+    const droneId = result.attestation_ids?.final_drone;
+    const link = droneId
+      ? `<br><a href="purchaser.html?id=${droneId}" style="color:var(--tan-success);font-weight:600;">View Aurora-X Drone provenance report</a>`
+      : '';
+    el.innerHTML = Components.alert(
+      `Demo data loaded! ${result.suppliers.length} suppliers, 5 attestations.${link}`,
+      'success'
+    );
+    loadData();
+  } catch (e) {
+    el.innerHTML = Components.alert(e.message, 'danger');
+  }
+}
+
+loadData();
+</script>
+
+</body>
+</html>

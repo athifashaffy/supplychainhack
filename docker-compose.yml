@@ -1,0 +1,65 @@
+version: "3.9"
+
+# ── Shared environment fragments ──────────────────────────────────────────────
+# Override at run-time: docker compose up -e API_BASE_URL=https://...
+x-api-url: &api-base-url
+  API_BASE_URL: ${API_BASE_URL:-http://localhost:8000}
+
+x-frontend-url: &frontend-base-url
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: supplychain
+      POSTGRES_USER: scuser
+      POSTGRES_PASSWORD: scpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scuser -d supplychain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    labels:
+      com.tan.role: database
+      com.tan.description: "PostgreSQL 16 — attestation and supplier registry store"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://scuser:scpass@db:5432/supplychain
+      <<: *api-base-url
+      <<: *frontend-base-url
+      # Set LOG_LEVEL=debug for verbose output during development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    labels:
+      com.tan.role: backend
+      com.tan.description: "FastAPI verification engine — Ed25519, DAG traversal, Canadian content"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    environment:
+      # Passed to the nginx container; used by entrypoint to patch API_BASE_URL
+      # into the static JS files at container start if needed.
+      <<: *api-base-url
+    depends_on:
+      - backend
+    labels:
+      com.tan.role: frontend
+      com.tan.description: "Static HTML/CSS/JS — Supplier and Purchaser UIs"
+
+volumes:
+  pgdata:
