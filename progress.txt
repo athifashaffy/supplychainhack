@@ -1,0 +1,21 @@
+# Ralph Progress Log
+Started: 2026-05-28
+---
+
+## Codebase Patterns
+- Attestation ID = SHA-256(canonical JSON of payload) — computed in crypto.py:content_addressed_id()
+- canonical JSON = json.dumps(payload, sort_keys=True, separators=(',',':'), ensure_ascii=True)
+- NEVER use model_dump() for signing/ID — Pydantic coerces int→float, breaks canonical form
+- Raw wire payload is stored in request.scope["_raw_payload"] by middleware — use this for sig/ID
+- Anomaly dicts always have: {type, attestation_id, detail} — some add extra fields (produced, consumed, etc.)
+- chain_nodes from traverse_dag is pre-order DFS: index 0 = root (final product), leaves last
+- Ed25519 public keys stored as 64-char hex (32 raw bytes) in suppliers table
+- asyncpg returns JSONB columns as strings sometimes — _parse_att() in graph.py handles this
+- run_all_checks(chain_nodes, pool, structural_anomalies) in anomaly.py is the single anomaly entry point
+- collect_chain_graceful() used for /api/product (partial chains OK); collect_chain() is strict mode
+- seed.py helpers: submit_attestation(pool, payload, private_key_hex, signer_id) handles sign+store
+- seed_edge_cases.py follows same pattern — returns dict of attestation_ids for inspection
+- Canadian content: 98% threshold = Product of Canada, 51% = Made in Canada (both need last transform in CA)
+- Last substantial transformation = first chain_node (root-most) with inputs + transformation_description
+- QuantityLedger in ledger.py does UTXO-style quantity accounting — wired into run_all_checks step 5
+---

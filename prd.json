@@ -1,0 +1,70 @@
+{
+  "branchName": "ralph/hackathon-prep",
+  "description": "Overnight prep tasks to harden the supply chain provenance system before the May 30 hackathon",
+  "userStories": [
+    {
+      "id": "PREP-1",
+      "title": "Seed edge cases for all new anomaly types",
+      "priority": 1,
+      "passes": false,
+      "description": "Update backend/seed_edge_cases.py to include fixtures that exercise the three new anomaly detectors: (1) negative cost_cad on a material to test invalid_cost detection, (2) an upstream attestation with a timestamp later than the downstream node that consumed it to test timestamp_ordering detection, (3) verify existing cross_chain_reuse and quantity_inconsistency fixtures still work. Each fixture should be a complete signed attestation chain submitted via the existing seed helpers. Add clear comments explaining which anomaly each fixture triggers.",
+      "acceptanceCriteria": [
+        "POST /api/seed/edge-cases returns success",
+        "GET /api/product/{id} on the negative-cost fixture returns at least one anomaly with type='invalid_cost'",
+        "GET /api/product/{id} on the timestamp fixture returns at least one anomaly with type='timestamp_ordering'",
+        "Syntax check passes"
+      ]
+    },
+    {
+      "id": "PREP-2",
+      "title": "Write pytest unit tests for anomaly detection",
+      "priority": 2,
+      "passes": false,
+      "description": "Create backend/tests/test_anomaly.py with pytest unit tests covering: (1) check_missing_fields — test with complete payload (no anomalies) and payloads missing each required field; (2) check_negative_costs — test with positive costs (clean), negative material cost, negative labour cost; (3) check_timestamp_ordering — test valid ordering, impossible ordering (upstream later than downstream), missing timestamps (should not crash); (4) check_signature — test with valid sig returns [], invalid sig returns one anomaly. Use the existing crypto.py helpers to generate real Ed25519 keypairs and signatures for the signature test. Do not require a running database — mock or avoid DB calls.",
+      "acceptanceCriteria": [
+        "backend/tests/test_anomaly.py exists",
+        "cd backend && pip install pytest && pytest tests/test_anomaly.py -v passes with all tests green",
+        "Tests cover at minimum: missing fields, negative costs, timestamp ordering, signature validity"
+      ]
+    },
+    {
+      "id": "PREP-3",
+      "title": "Write pytest unit tests for Canadian content computation",
+      "priority": 3,
+      "passes": false,
+      "description": "Create backend/tests/test_canadian_content.py with pytest unit tests covering: (1) all-Canadian chain → Product of Canada; (2) 51-97% Canadian → Made in Canada; (3) below 51% → Not Qualified; (4) last transformation not in Canada → Not Qualified regardless of percentage; (5) empty chain → Unknown; (6) zero total cost → 0% and Not Qualified; (7) diamond DAG (shared upstream node) — verify costs are not double-counted. Build synthetic chain_nodes dicts directly (no DB needed) to pass into compute_content().",
+      "acceptanceCriteria": [
+        "backend/tests/test_canadian_content.py exists",
+        "pytest tests/test_canadian_content.py -v passes with all tests green",
+        "Diamond DAG double-counting test explicitly present"
+      ]
+    },
+    {
+      "id": "PREP-4",
+      "title": "Schema adapter module for event-day flexibility",
+      "priority": 4,
+      "passes": false,
+      "description": "Create backend/schema_adapter.py with a normalize_payload(raw: dict) -> dict function that maps incoming attestation payloads to our internal schema. The adapter should handle common field name variants the event-day spec might use: 'worker_id' or 'signer_id' → 'supplier_id'; 'labor' → 'labour'; 'cost' or 'cost_usd' → 'cost_cad' (with a note that currency conversion is identity for now); 'inputs' as either a list of strings or a list of dicts with an 'id' key → normalize to list of strings. Wire normalize_payload() into the middleware (_verify_attestation_body) and into api_attest so that normalization happens before canonical JSON computation and signature verification. The function should be a no-op (return payload unchanged) if none of the variant field names are present.",
+      "acceptanceCriteria": [
+        "backend/schema_adapter.py exists with normalize_payload() function",
+        "Function is called in middleware before signature verification",
+        "Function is called in api_attest before ID computation",
+        "Syntax check passes",
+        "Existing seed data still works after the adapter is wired in"
+      ]
+    },
+    {
+      "id": "PREP-5",
+      "title": "Purchaser UI — improve anomaly display and chain visualization",
+      "priority": 5,
+      "passes": false,
+      "description": "Update frontend/public/components.js and purchaser.html to improve the provenance report display: (1) Show each anomaly with a coloured badge by type (invalid_signature=red, unknown_signer=red, missing_field=orange, invalid_cost=orange, quantity_inconsistency=red, cross_chain_reuse=red, timestamp_ordering=orange, cycle=red, missing_reference=orange); (2) Add a supply chain tier table that shows each node in the chain with: product name, supplier ID, location country, sig valid badge, and whether it was the last substantial transformation; (3) Show the chain_length in the summary. Keep changes in components.js only where possible to avoid duplicating logic across pages.",
+      "acceptanceCriteria": [
+        "Anomalies render with colour-coded badges by type",
+        "Supply chain tier table visible in the provenance report",
+        "chain_length displayed in the report summary",
+        "No JS errors in browser console"
+      ]
+    }
+  ]
+}
