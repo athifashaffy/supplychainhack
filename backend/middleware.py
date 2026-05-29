@@ -67,7 +67,14 @@ class AttestationIntegrityMiddleware(BaseHTTPMiddleware):
             )
             return JSONResponse(exc.to_dict(), status_code=422)
 
-        # ── 3. Re-inject body so the route handler can still read it ──────────
+        # ── 3. Store raw payload dict in scope so api_attest can use it ──────
+        #    We must sign/verify against the wire-format payload, not the
+        #    Pydantic model_dump() version, which coerces int→float (e.g.
+        #    cost_cad:1 → 1.0) producing a different canonical JSON and
+        #    therefore a different ID and signature digest.
+        request.scope["_raw_payload"] = body.get("payload", {})
+
+        # ── 4. Re-inject body so the route handler can still read it ──────────
         #    Starlette's BaseHTTPMiddleware consumes the receive channel; we must
         #    replace it with a coroutine that replays the original bytes.
         async def _replay_body():

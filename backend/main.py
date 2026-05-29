@@ -85,15 +85,18 @@ async def api_register_supplier(body: SupplierCreate, pool=Depends(db)):
 # ── Attestations ──────────────────────────────────────────────────────────────
 
 @app.post("/api/attest", status_code=201)
-async def api_attest(body: AttestationSubmit, pool=Depends(db)):
-    payload_dict = body.payload.model_dump()
+async def api_attest(request: Request, body: AttestationSubmit, pool=Depends(db)):
+    # Use the wire-format payload dict (stored by AttestationIntegrityMiddleware)
+    # rather than body.payload.model_dump(). Pydantic coerces int→float (e.g.
+    # cost_cad:1 → 1.0), which changes the canonical JSON and breaks signature
+    # verification and content-addressed IDs for whole-number values.
+    payload_dict: dict = request.scope.get("_raw_payload") or body.payload.model_dump()
 
-    # Compute content-addressed ID
+    # Compute content-addressed ID from the exact bytes that were signed
     att_id = content_addressed_id(payload_dict)
 
-    # Signature validity (AttestationIntegrityMiddleware has already verified
-    # this for known signers before we reach here; we re-run to populate the
-    # sig_valid column correctly in the DB record).
+    # Signature validity — middleware already verified this for known signers,
+    # but we re-run here to populate sig_valid in the DB record.
     supplier = await get_supplier(pool, body.signer_id)
     sig_valid = (
         verify_signature(payload_dict, body.signature, supplier["public_key_hex"])
