@@ -5,16 +5,38 @@ Checks:
   1. Signature validity (per-attestation)
   2. Unknown signer (not in registry)
   3. Missing required fields
-  4. Quantity fraud (consumed > upstream produced) — via QuantityLedger (UTXO model)
-  5. Replay/reuse (same attestation in multiple product chains) — checked at ingest
-  6. Cycle / missing reference (handled in graph.py, passed in as pre-detected)
+  4. Negative costs (material or labour cost_cad < 0)
+  5. Quantity fraud (consumed > upstream produced) — via QuantityLedger (UTXO model)
+  6. Timestamp ordering (upstream timestamp must not be later than downstream)
+  7. Replay/reuse (same attestation in multiple product chains)
+  8. Cycle / missing reference (handled in graph.py, passed in as pre-detected)
 """
 
+from __future__ import annotations
+from datetime import datetime, timezone
 from crypto import verify_signature
 from ledger import QuantityLedger
 
 
 REQUIRED_FIELDS = ["supplier_id", "product_name", "timestamp", "location"]
+
+
+def _parse_ts(ts: str) -> datetime | None:
+    """Parse ISO 8601 timestamp, return None on failure."""
+    if not ts:
+        return None
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S",
+    ):
+        try:
+            dt = datetime.strptime(ts, fmt)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
 
 
 def check_missing_fields(att_id: str, payload: dict) -> list[dict]:
@@ -33,6 +55,67 @@ def check_missing_fields(att_id: str, payload: dict) -> list[dict]:
             "attestation_id": att_id,
             "detail": "location.country is missing",
         })
+    return anomalies
+
+
+def check_negative_costs(att_id: str, payload: dict) -> list[dict]:
+    """Flag any material or labour cost_cad that is negative."""
+    anomalies = []
+    for mat in payload.get("materials") or []:
+        cost = mat.get("cost_cad")
+        if cost is not None and float(cost) < 0:
+            anomalies.append({
+                "type": "invalid_cost",
+                "attestation_id": att_id,
+                "detail": (
+                    f"Material '{mat.get('name', '?')}' has negative cost_cad "
+                    f"({cost}) — possible cost manipulation"
+                ),
+            })
+    labour = payload.get("labour") or {}
+    if labour:
+        cost = labour.get("cost_cad")
+        if cost is not None and float(cost) < 0:
+            anomalies.append({
+                "type": "invalid_cost",
+                "attestation_id": att_id,
+                "detail": f"Labour has negative cost_cad ({cost}) — possible cost manipulation",
+            })
+    return anomalies
+
+
+def check_timestamp_ordering(chain_nodes: list[dict]) -> list[dict]:
+    """
+    Detect impossible timestamp orderings: an upstream (input) attestation
+    whose timestamp is strictly later than the downstream attestation that
+    consumed it. A supplier cannot have produced something before it existed.
+    """
+    anomalies = []
+    id_to_ts: dict[str, datetime | None] = {}
+
+    for node in chain_nodes:
+        ts_str = node["payload"].get("timestamp", "")
+        id_to_ts[node["id"]] = _parse_ts(ts_str)
+
+    for node in chain_nodes:
+        downstream_ts = id_to_ts.get(node["id"])
+        if downstream_ts is None:
+            continue
+        for input_id in node["payload"].get("inputs") or []:
+            upstream_ts = id_to_ts.get(input_id)
+            if upstream_ts is None:
+                continue
+            if upstream_ts > downstream_ts:
+                anomalies.append({
+                    "type": "timestamp_ordering",
+                    "attestation_id": node["id"],
+                    "detail": (
+                        f"Upstream attestation {input_id[:12]}... has timestamp "
+                        f"{upstream_ts.isoformat()} which is later than downstream "
+                        f"attestation timestamp {downstream_ts.isoformat()} — "
+                        "impossible physical ordering"
+                    ),
+                })
     return anomalies
 
 
@@ -97,7 +180,10 @@ async def run_all_checks(chain_nodes: list[dict], pool, structural_anomalies: li
         # 1. Missing fields
         anomalies.extend(check_missing_fields(att_id, payload))
 
-        # 2. Check signer in registry
+        # 2. Negative costs
+        anomalies.extend(check_negative_costs(att_id, payload))
+
+        # 3. Check signer in registry
         supplier = await get_supplier(pool, signer_id)
         if supplier is None:
             anomalies.append({
@@ -107,17 +193,20 @@ async def run_all_checks(chain_nodes: list[dict], pool, structural_anomalies: li
             })
             continue  # can't verify signature without public key
 
-        # 3. Signature validity
+        # 4. Signature validity
         anomalies.extend(
             check_signature(att_id, payload, signature, supplier["public_key_hex"])
         )
 
-    # 4. Quantity fraud across DAG — UTXO-style ledger (correct multi-input accounting)
+    # 5. Quantity fraud across DAG — UTXO-style ledger (correct multi-input accounting)
     ledger = QuantityLedger()
     ledger.ingest_chain(chain_nodes)
     anomalies.extend(ledger.violations())
 
-    # 5. Cross-chain reuse (replay / double-spend)
+    # 6. Timestamp ordering — upstream must not post-date its downstream consumer
+    anomalies.extend(check_timestamp_ordering(chain_nodes))
+
+    # 7. Cross-chain reuse (replay / double-spend)
     anomalies.extend(await check_cross_chain_reuse(chain_nodes, pool))
 
     return anomalies

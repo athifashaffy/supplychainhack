@@ -17,7 +17,7 @@ from db import get_pool, init_schema
 from models import AttestationSubmit, SupplierCreate, VerificationResult, ProvenanceReport
 from crypto import content_addressed_id, verify_signature
 from registry import get_supplier, list_suppliers, register_supplier
-from graph import collect_chain
+from graph import collect_chain, collect_chain_graceful
 from canadian_content import compute_content
 from anomaly import run_all_checks
 from exceptions import IntegrityViolationError
@@ -183,18 +183,16 @@ async def api_verify(att_id: str, pool=Depends(db)):
 
 @app.get("/api/product/{att_id}")
 async def api_product(att_id: str, pool=Depends(db)):
-    # 1. Traverse DAG
-    chain_nodes, structural_anomalies = await collect_chain(pool, att_id)
+    # 1. Traverse DAG — graceful mode continues past missing references rather
+    #    than aborting, so partial chains still produce a meaningful report.
+    #    Structural anomalies (missing refs, cycles) are accumulated alongside
+    #    whatever portion of the chain was reachable.
+    chain_nodes, structural_anomalies = await collect_chain_graceful(pool, att_id)
 
     dag_valid = len(structural_anomalies) == 0
 
     if not chain_nodes:
-        # Try single node if chain collection failed
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM attestations WHERE id = $1", att_id)
-        if row is None:
-            raise HTTPException(404, "Attestation not found")
-        chain_nodes = [_pa(dict(row))]
+        raise HTTPException(404, "Attestation not found")
 
     # 2. Compute Canadian content
     content = compute_content(chain_nodes)
