@@ -201,10 +201,16 @@ The `visited` set prevents processing the same node twice even when reachable vi
 
 ```python
 def compute_content(chain_nodes):
-    # 1. Find last substantial transformation node
-    #    - First node in chain_nodes (pre-order DFS) that has inputs AND transformation_description
-    #    - Fallback: first node with any inputs
-    #    - last_transformation_in_canada = is_canadian(that_node.location.country)
+    # 1. Identify last substantial transformation node
+    #    - chain_nodes is pre-order DFS, so chain_nodes[0] is the queried root
+    #      (the final product). The root IS the last substantial transformation,
+    #      so its location.country determines last_transformation_in_canada.
+    #    - last_transformation_in_canada = is_canadian(chain_nodes[0].location.country)
+    #    NOTE: an earlier heuristic required inputs AND transformation_description,
+    #      but that wrongly classified 100%-Canadian single-tier products as
+    #      "Not Qualified" (no upstream refs → no detected transformation). The
+    #      spec may define substantial transformation differently — see the
+    #      event-day-adapt skill, Step 3.
 
     # 2. For each node (deduplicated via seen_ids):
     #    - Sum materials costs by country
@@ -392,7 +398,7 @@ API_BASE_URL=https://your-public-url.com docker compose up --build
 The ledger distributes total consumed quantity evenly across all inputs. This is an approximation — if a node has 3 inputs but consumed all material from one, the per-input attribution may miss the fraud. The spec may provide a way to attribute per-material provenance explicitly; if so, the ledger logic in `ledger.py:_record_node()` should be updated.
 
 ### Substantial transformation heuristic
-We identify the last substantial transformation as the root-most chain node that has `inputs` AND a non-empty `transformation_description`. The event-day spec may define this differently (boolean field, enum, etc.). The relevant code is in `canadian_content.py` around line 54.
+We treat the queried root node (`chain_nodes[0]` in pre-order DFS — the final product) as the location of the last substantial transformation, and use its `location.country`. An earlier version required `inputs` AND a non-empty `transformation_description`, but that mislabelled 100%-Canadian single-tier products as "Not Qualified"; it was removed. The event-day spec may define substantial transformation differently (boolean field, enum, etc.) — adapt the `last_transformation_node` selection in `canadian_content.py` (around line 61). See the `event-day-adapt` skill, Step 3.
 
 ### Schema may change on event day
 On event day, the harness provides its own attestation schema and supplier registry. The system must be adapted to match. Key adaptation points:
