@@ -1,0 +1,23 @@
+{
+  "root_hash": "DRONE",
+  "attestations": [
+    {
+      "hash": "MOTOR", "supplier_id": "SUP-MOTOR",
+      "output": {"product_id": "motor", "quantity": 1, "unit": "unit"},
+      "inputs": [],
+      "materials_cents": 100, "labour_cents": 100,
+      "work_country": "CA", "is_substantial_transformation": false,
+      "timestamp": "2026-05-30T15:00:00Z",
+      "signature_valid": true, "signer_known": true
+    },
+    {
+      "hash": "DRONE", "supplier_id": "SUP-DRONE",
+      "output": {"product_id": "drone", "quantity": 1, "unit": "unit"},
+      "inputs": [{"attestation_hash": "MOTOR", "quantity_used": 1}],
+      "materials_cents": 20, "labour_cents": 400,
+      "work_country": "CA", "is_substantial_transformation": true,
+      "timestamp": "2026-05-30T11:00:00Z",
+      "signature_valid": true, "signer_known": true
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "root_hash": "A",
+  "attestations": [
+    {
+      "hash": "A", "supplier_id": "SUP-A",
+      "output": {"product_id": "a", "quantity": 1, "unit": "unit"},
+      "inputs": [{"attestation_hash": "B", "quantity_used": 1}],
+      "materials_cents": 100, "labour_cents": 100,
+      "work_country": "CA", "is_substantial_transformation": false,
+      "timestamp": "2026-05-30T10:00:00Z",
+      "signature_valid": true, "signer_known": true
+    },
+    {
+      "hash": "B", "supplier_id": "SUP-B",
+      "output": {"product_id": "b", "quantity": 1, "unit": "unit"},
+      "inputs": [{"attestation_hash": "A", "quantity_used": 1}],
+      "materials_cents": 100, "labour_cents": 100,
+      "work_country": "CA", "is_substantial_transformation": false,
+      "timestamp": "2026-05-30T10:30:00Z",
+      "signature_valid": true, "signer_known": true
+    }
+  ]
+}
