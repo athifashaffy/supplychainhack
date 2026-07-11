@@ -6,6 +6,8 @@ Bayview Yards, Ottawa | May 30, 2026 | $20,000 prize pool
 A cryptographic provenance system for verifying "Made in Canada" and "Product of Canada" claims in the Canadian drone sector supply chain.
 
 ---
+## 🏆 Project Demo
+* [View Presentation (Canva)](https://canva.link/qz9mnsctb8o23qj)
 
 ## What It Does
 
